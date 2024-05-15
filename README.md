@@ -167,7 +167,7 @@ pipeline {
 
 and below is the private docker repo:
 
-![M8image03.png](assets/M8image03.png)
+![M8image04.png](assets/M8image04.png)
 
 - We can also run it with a script.groovy to make it neater, as below:
 
