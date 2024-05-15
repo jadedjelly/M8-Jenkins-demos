@@ -1,316 +1,106 @@
 ## Demo Project: 
-### Create a Jenkins Shared Library
+### Configure Webhook to trigger CI Pipeline automatically on every change
 
 #### Technologies used:
-- Jenkins, Groovy, Docker, Git, Java, Maven
+- Jenkins, GitLab, Git, Docker, Java, Maven
 
 #### Project Description:
-Create a Jenkins Shared Library to extract common build logic:
-1. Create separate Git repository for Jenkins Shared Library (JSL) project
-2. Create functions in the JSL to use in the Jenkins pipeline
-3. Integrate and use the JSL in Jenkins Pipeline (globally and for a specific project in Jenkinsfile)
+1. Install GitLab Plugin in Jenkins
+2. Configure GitLab access token and connection to Jenkins in GitLab project settings
+3. Configure Jenkins to trigger the CI pipeline, whenever a change is pushed to GitLab
 
-- We create a new groovy project in intillij
-- Add a folder called var
-- add a new file called "buildJar.groovy"
-    - Inside the Jenkinsfile you'll reference the name of the file
-- inside the new file we define the logic, as below for buildJar
-- it's also best practice to add the #! for groovy to the file
-    - #!/user/bin/env groovy
+*Gitlab account used only for this reason*
+*Will add github & bitbucket connection in personal projects*
 
-the code used is exactly the same as we wrote for the script.groovy
-
-```groovy
-#!/user/bin/env groovy
-
-def call() {
-    echo "building the application..."
-    sh 'mvn package'
-}
-```
-- we do the same for buildImage
-
-- Now we create & push to the repo on Github
-    - init, commit, push etc
-
-## Make shared Library globally available
-
-If the SL is used by all teams, it makes sense to make it available globally
-
-- Head to Manage Jenkins
-    - system
-        - scroll down to Global Pipeline Libraries & click add
-            - name: Jenkins-shared-library
-            - Default version: here we can use a commit hash, or master, or etc. You should be versioning the JSL. we set it as **main**, obviously if something breaks here it breaks the pipelines
-            - I use github, so fill in what is required (credentials & url)
-            - click save
-That's it, it's done. The SL is now available globally
-
-## Use shared library in a Jenkinsfile
-
-- create a new branch off main, and call it jenkins-shared-library
-
-we keep the script.groovy as Nana has pointed out you might in the real world have references that use it
-
-- we add the following to import that library as we defined in the global configuration, this is added under the shebang and above the def gv
-
-**Note: if we didn't have the def gv definition we would need to put an underscore_ after the line as** 
-*@Library('Jenkins-shared-library')_*
-
-```groovy
-@Library('Jenkins-shared-library')
-```
-
-- From the script.groovy we remove the buildJar & buildImage references and from the Jenkinsfile
-
-```groovy
-        stage("build jar") {
-            steps {
-                script {
-                    buildJar()
-                }
-            }
-        }
-        stage("build image") {
-            steps {
-                script {
-                    buildImage()
-                }
-            }
-        }
-```
-
-- the calling of these 2x functions is so very simple buildJar() and buildImage()
-- Run the scan Multibranch pipeline now
-    - test was successful
+- Go to Jenkins Plugins, search for Gitlab plugin & install
 
 ![M8image01.png](assets/M8image01.png)
 
-![M8image02.png(assets/M8image02.png)
+- head to System, scroll down to Gitlab
+    - name: gitlab-connection
+    - host url: https://gitlab.com/
+    - credentials:
+        - Click Add > Jenkins
+        - Change kind to "Gitlab API Token"
+        - Go to users Pref on Gitlab > click Access tokens
+            - Click Add new token
+                - Give it a name "Jenkins"
+                - can give it an expiration date
+                - then select the scope: api
+                - Click "Create personal access token"
+                - Take a copy of the access toekn - you wont be able to see this again
+        - Head back to Jenkins, and paste the access token into the API token field
+        - ID: call it "gitlab-token"
+        - Click add
+    - From the drop down menu now, you can select gitlab-token
+    - click test connection, make sure its a success
+    - Click save
 
-## Using parameters in a shared Library
+- Interestingly, if you head to a pipeline jobs configuration, you can see the gitlab-connection we just created
+- Scrolling down further you can see other new options, like:
+    - Build when a change is pushed to GitLab. GitLab webhook URL: http://164.92.163.54:8080/project/my-pipeline
 
-In the buildImage groovy file, we have hardcoded the image name & tag, but this is impractical, as we would want to pass the image as a parameter, and each build would create a new repo and tag
-- inside the buildImage.groovy file, we add a parameter to the call (similar in most languages)
+![M8image02.png](assets/M8image02.png)
 
-```groovy
-def call(String imageName) {
-    echo "building the docker image..."
-    withCredentials([usernamePassword(credentialsId: 'Docker-hub-repo', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
-        sh "docker build -t $imageName ."
-        sh 'echo $PASS | docker login -u $USER --password-stdin'
-        sh "docker push $imageName"
-    }
-}
+- The next part is to setup Gitlab to automatically send notifiers to Jenkins whenever a commit / push happens
 
-```
+- Head to settings inside the project (bottom left) > click "integrations"
+    - Scroll down to Jenkins, press configure
+    - keep it enabled
+    - Trigger:
+        - select what the trigger will be, in this case a push
+    - pop in the url: http://164.92.163.54:8080 (my Jenkisn server)
+    - untick SSL
+    - Project Name: is the job name that will trigger the build!
+        - my-pipeline
+    - Username & password: your creds you use to login to the user a/c on the server
+- Save the changes
 
-- In an earlier build, we had logic which was being built using EnvVariables. We add this to the buildJar.groovy file as below
+![M8image03.png](assets/M8image03.png)
 
-```groovy
-def call() {
-    echo "building the application for branch $BRANCH_NAME"
-    sh 'mvn package'
-}
-```
+- You can test this connection, by clicking "Test settings"
 
-- Back in the Jenkinsfile, we add the below to the buildImage
+you will get: the below in the bottom left corner:
 
-```groovy
-        stage("build image") {
-            steps {
-                script {
-                    buildImage 'jadedjelly/mod8-jenkins:jma-3.0'
-                }
-            }
-        }
-```
+![M8image04.png](assets/M8image04.png)
 
-- We push the changes and run the scan again
-- viewing the build logs, we can see the params that are now displayed within the logs, and checking dockerhub we can see the new image
+- after some reconfiguration of Jenkinsfile finally got the pipeline working with the trigger
 
-![M8image03.png(assets/M8image03.png)
+![M8image05.png](assets/M8image05.png)
 
+- changed a line in feature/payment to trigger a rebuild, the below image shows the build during 
 
-## Extract logic to Groovy Classes
+![M8image06.png](assets/M8image06.png)
 
-- Create a new package inside the src folder, call it "com.example"
-- then create a new file inside the com.example package, call it "Docker.groovy"
+## Configure automatic triggering of Jenkins job for Multi-branch Pipeline
 
-*Note: We don't have the ability to use Env Variables / withCredentials, etc as we would in the scripts located in vars folder*
+- The configuration change for MB pipelines used to be configurable the same way for a regular pipeline, this is however not the case anymore!
+    - **BUT** we need another plugin!
+    - Install: ![Multibranch Scan Webhook Trigger](https://plugins.jenkins.io/multibranch-scan-webhook-trigger/)
 
-- We pass parameters from these methods and we call it
-- the line below, will hold all the info, inc enviroments (Docker(script) & the commands and methods for the pipeline
+![M8image07.png](assets/M8image07.png)
 
-```groovy
-package com.example
+    - Nothing needs to be done in the system
 
-class Docker implements Serializable{
+- open the "my-multibranch-pipeline" > configure
+- Under "Scan Multibranch Pipeline Triggers", there are 2options:
+    - Periodically if not otherwise run
+        - can choose an interval: 1 min to 4 weeks
+    - Scan for webhook (this is the one we want, because we need it to run on a push / pull etc)
+        - Looking for a trigger token, call it "github-token"
+        - This is used for the comms between Jenkins & the git repo
+- Click save! as this will trigger Jenkins to scan again (after any config changes)
 
-    Docker(script){
-        
-    }
-}
-```
+- Head back to gitlab, from the project, click Settings > Webhooks
+    - URL: http://164.92.163.54:8080/multibranch-webhook-trigger/invoke?token=gitlabtoken
+        - this is the url Jenkins is accepting calls from the repo
+    - Secret token: isn't use in this case
+    - Trigger: Push Events
+        - It then asks whether it should be:
+            - All branches
+            - Wildcard Pattern
+            - Regex
+    - Press Add Webhook
+        - You can also run tests (from a drop down)
 
-- "this.script = script" will allow us to execute all those commands
-```groovy
-    def buildDockerImage(string imageName) {
-        echo "building the docker image..."
-        withCredentials([usernamePassword(credentialsId: 'Docker-hub-repo', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
-            sh "docker build -t $imageName ."
-            sh 'echo $PASS | docker login -u $USER --password-stdin'
-            sh "docker push $imageName"
-        }
-    }
-}
-```
-
-- Nana points out you can have multiple functions here, each one executing a single command
-- Since groovy doesn't have access / cant resolve the commands used inside the block and we have defined it inside the def script, we add "script." so they can be, as below:
-
-```groovy
-def buildDockerImage(string imageName) {
-        script.echo "building the docker image..."
-        script.withCredentials([script.usernamePassword(credentialsId: 'Docker-hub-repo', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
-            script.sh "docker build -t $imageName ."
-            script.sh 'echo $PASS | docker login -u $USER --password-stdin'
-            script.sh "docker push $imageName"
-        }
-```
-
-- we need to edit the varibales used for authentication, as leaving it as it is will be used as a string rather than what it is
-
-```groovy
-...
-            script.sh "echo '${script.PASS}' | docker login -u '${script.USER}' --password-stdin"
-...
-```
-
-- we could do the same if we wanted to use $BRANCH_NAME
-
-The function is ready, now it's time to edit the buildImage.groovy
-
-- as always we need to import the new made package, using
-
-```groovy
-import com.example.docker
-```
-
-- inside the Jenkinsfile we don't need to change the syntax for buildImage, as we are still referring to it!
-- This is a best practice, and makes it easier to use
-- pushed to repo
-- and we retest pipeline
-
-*Note2: Nana' syntax didn't work for me and had to change some variables names...*
-
-- Run Build now, and got a successful build, see below:
-
-![M8image04.png(assets/M8image04.png)
-
-## split "buildDockerImage" into seperate steps
-
-Using the newly created Docker.groovy file, we're going to split it down further, creating 3 fucntions
-
-- We seperate each part of the file, build, login and push, as below:
-
-```groovy
-#!/user/bin/env groovy
-package com.example
-
-class Docker implements Serializable {
-
-    def script
-
-    Docker(script) {
-        this.script = script
-
-    }
-
-    def buildDockerImage(String imageName) {
-        script.echo "building the docker image..."
-            script.sh "docker build -t $imageName ."
-        }
-
-    def dockerLogin(){
-        script.withCredentials([script.usernamePassword(credentialsId: 'Docker-hub-repo', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
-            script.sh "echo '${script.PASS}' | docker login -u '${script.USER}' --password-stdin"
-        }
-    }
-
-    def dockerPush(String imageName){
-        script.sh "docker push $imageName"
-    }
-}
-```
-
-- Just as before we can ref the fucntions in our scripts, we also create another 2x files in vars
-    - dockerLogin.groovy
-    - dockerPush.groovy
-
-dockerLogin.groovy
-```groovy
-#!/user/bin/env groovy
-import com.example.Docker
-def call() {
-    return new Docker(this).dockerLogin()
-}
-```
-
-dockerPush.groovy
-```groovy
-#!/user/bin/env groovy
-import com.example.Docker
-def call(String imageName) {
-    return new Docker(this).dockerPush(imageName)
-}
-```
-
-- inside the Jenkinsfile, we can call the functions as you would
-*Note: I have changed the version to 4.0*
-
-```groovy
-...
-        stage("build and push image") {
-            steps {
-                script {
-                    buildImage 'jadedjelly/mod8-jenkins:jma-4.0'
-                    dockerLogin()
-                    dockerPush 'jadedjelly/mod8-jenkins:jma-4.0'
-                }
-            }
-        }
-...
-```
-
-- pushed the updates and running Build now
-- success
-
-![M8image05.png(assets/M8image05.png)
-
-![M8image06.png(assets/M8image06.png)
-
-## Project scoped Shared Library
-
-- 1st we remove the library from the global area (system > scroll down to SL and click delete and save)
-- In the Jenkinsfile, we remove the @Library... as it obvs won't work, instead
-    - we add the below, note, the same as we had to use a version, the same is done here after the @ (main is master for me) - you can also add a tag, hash to this
-    - we also add another attrib "retriever" which will call the modernSCM
-        -inside we call the GitSCMSource,
-        - remote, which is the git url
-        - credentialsId - self explanatory
-
-```groovy
-#!/usr/bin/env groovy
-library identifier: 'jenkins-shared-library@main', retriever: modernSCM(
-        [$class: 'GitSCMSource',
-        remote: 'https://github.com/jadedjelly/jenkins-shared-library.git',
-        credentialsId: 'github-creds'])
-     
-
-def gv
-```
-
-- pushed, and run and got success!
-
-![M8image07.png(assets/M8image07.png)
+![M8image08.png](assets/M8image08.png)
